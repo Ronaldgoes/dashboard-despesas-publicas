@@ -6,6 +6,7 @@ import {
   Search,
   Warehouse,
 } from "lucide-react";
+import { getElementoDespesa } from "../shared/elementoDespesa.js";
 
 const storageUrl = String(
   import.meta.env.VITE_EMPENHOS_STORAGE_URL ??
@@ -44,12 +45,6 @@ const formatCurrency = (value) =>
     style: "currency",
     currency: "BRL",
   }).format(amountFromValue(value));
-
-const elementFromSubelement = (value) => {
-  const code = String(value ?? "").replace(/\D/g, "").slice(0, 6);
-  if (code.length !== 6) return "Não informado";
-  return `${code.slice(0, 1)}.${code.slice(1, 2)}.${code.slice(2, 4)}.${code.slice(4, 6)}`;
-};
 
 function formatValue(value, key) {
   const text = String(value ?? "").trim();
@@ -595,12 +590,13 @@ export default function NotasEmpenhoPage() {
                                   </p>
                                 ) : (
                                   <dl>
-                                    {section === "Classificação orçamentária" && (
-                                      <div>
-                                        <dt>Elemento</dt>
-                                        <dd>{elementFromSubelement(record.cdsubelemento)}</dd>
-                                      </div>
-                                    )}
+                                    {section === "Classificação orçamentária" && (() => {
+                                      const element = getElementoDespesa(record.cdsubelemento);
+                                      return <>
+                                        <div><dt>Código do elemento</dt><dd>{element.code || "Não informado"}</dd></div>
+                                        <div><dt>Elemento</dt><dd>{element.name}</dd></div>
+                                      </>;
+                                    })()}
                                     {sectionFields.map((field) => (
                                       <div key={field.key}>
                                         <dt>{field.label}</dt>
