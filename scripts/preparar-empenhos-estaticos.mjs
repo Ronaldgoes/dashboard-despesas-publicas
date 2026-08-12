@@ -53,6 +53,16 @@ function folderName(value) {
   return encodeURIComponent(String(value).trim())
 }
 
+function amount(value) {
+  const text = String(value ?? '').replace(/[^0-9,.-]/g, '').trim()
+  if (!text) return 0
+  const normalized = text.includes(',')
+    ? text.replaceAll('.', '').replace(',', '.')
+    : text
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 async function writeChunk(releaseDirectory, state) {
   if (!state.records.length) return
   const relativePath = `releases/${state.releaseId}/${state.folder}/${state.year}/${String(state.chunk).padStart(5, '0')}.json`
@@ -96,12 +106,14 @@ for await (const row of csvRows()) {
       files: [],
       records: [],
       units: new Map(),
+      totalValue: 0,
     }
     states.set(stateKey, state)
   }
 
   const record = empenhoFieldKeys.map((field) => String(row[field] ?? ''))
   state.records.push(record)
+  state.totalValue += amount(row.vlempenho)
   if (state.records.length === recordsPerFile) await writeChunk(outputDirectory, state)
 
   const unitCode = String(row.cdunidadegestora ?? '').trim() || 'Sem código'
@@ -113,11 +125,15 @@ for await (const row of csvRows()) {
 
   let organization = organizations.get(organizationKey)
   if (!organization) {
-    organization = { id: folderName(code), code, name, total: 0, years: new Map() }
+    organization = { id: folderName(code), code, name, total: 0, totalValue: 0, years: new Map() }
     organizations.set(organizationKey, organization)
   }
   organization.total += 1
-  organization.years.set(year, (organization.years.get(year) ?? 0) + 1)
+  organization.totalValue += amount(row.vlempenho)
+  const organizationYear = organization.years.get(year) ?? { count: 0, totalValue: 0 }
+  organizationYear.count += 1
+  organizationYear.totalValue += amount(row.vlempenho)
+  organization.years.set(year, organizationYear)
   totalRecords += 1
 }
 
@@ -140,10 +156,12 @@ const manifest = {
       code: organization.code,
       name: organization.name,
       total: organization.total,
+      totalValue: organization.totalValue,
       years: [...organization.years.entries()]
-        .map(([year, count]) => ({
+        .map(([year, summary]) => ({
           year,
-          count,
+          count: summary.count,
+          totalValue: summary.totalValue,
           chunks: chunksByOrganizationYear.get(`${key}||${year}`) ?? [],
           units: [...(states.get(`${key}||${year}`)?.units.values() ?? [])]
             .sort((left, right) => `${left.code} ${left.name}`.localeCompare(`${right.code} ${right.name}`, 'pt-BR')),

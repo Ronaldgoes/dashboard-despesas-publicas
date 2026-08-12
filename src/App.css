@@ -882,12 +882,14 @@ td:last-child {
 .unit-heading span { display: block; font-size: 10px; font-weight: 850; letter-spacing: .08em; }
 .unit-heading h3 { margin: 3px 0 0; color: var(--heading); font-size: 15px; overflow-wrap: anywhere; }
 .unit-heading strong { margin-left: auto; color: #075f57; font-size: 12px; white-space: nowrap; }
-.notes-overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
-.notes-overview div { display: grid; gap: 5px; padding: 16px 18px; border-radius: 12px; color: #fff; background: #172033; }
+.notes-overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+.notes-overview div { display: grid; gap: 5px; padding: 14px 16px; border-radius: 12px; color: #fff; background: #172033; }
 .notes-overview div:nth-child(2) { background: var(--accent); }
 .notes-overview div:nth-child(3) { background: #0f4c5c; }
+.notes-overview div:nth-child(4) { background: #166534; }
 .notes-overview span { font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; opacity: .78; }
-.notes-overview strong { font-size: 16px; }
+.notes-overview strong { font-size: 15px; }
+@media (max-width: 1120px) { .notes-overview { grid-template-columns: repeat(2, 1fr); } }
 .agency-group { margin-bottom: 28px; }
 .agency-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin: 0 0 12px; padding: 0 4px; }
 .agency-heading h2 { font-size: 24px; }
