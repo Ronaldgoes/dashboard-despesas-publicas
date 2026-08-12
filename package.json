@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "preparar:empenhos": "node scripts/preparar-empenhos-estaticos.mjs",
     "publicar:empenhos": "node --env-file=.env scripts/publicar-empenhos-r2.mjs",
-    "verificar:empenhos": "node --env-file=.env scripts/verificar-empenhos-r2.mjs"
+    "verificar:empenhos": "node --env-file=.env scripts/verificar-empenhos-r2.mjs",
+    "atualizar:catalogo-empenhos": "node --env-file=.env scripts/atualizar-catalogo-empenhos-r2.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
