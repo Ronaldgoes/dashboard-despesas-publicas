@@ -45,6 +45,12 @@ const formatCurrency = (value) =>
     currency: "BRL",
   }).format(amountFromValue(value));
 
+const elementFromSubelement = (value) => {
+  const code = String(value ?? "").replace(/\D/g, "").slice(0, 6);
+  if (code.length !== 6) return "Não informado";
+  return `${code.slice(0, 1)}.${code.slice(1, 2)}.${code.slice(2, 4)}.${code.slice(4, 6)}`;
+};
+
 function formatValue(value, key) {
   const text = String(value ?? "").trim();
   if (!text) return "Não informado";
@@ -482,7 +488,7 @@ export default function NotasEmpenhoPage() {
         </div>
         <div>
           <span>Colunas por nota</span>
-          <strong>{fields.length || 33} campos</strong>
+          <strong>{(fields.length || 33) + 1} campos</strong>
         </div>
         <div>
           <span>Valor total das notas</span>
@@ -589,6 +595,12 @@ export default function NotasEmpenhoPage() {
                                   </p>
                                 ) : (
                                   <dl>
+                                    {section === "Classificação orçamentária" && (
+                                      <div>
+                                        <dt>Elemento</dt>
+                                        <dd>{elementFromSubelement(record.cdsubelemento)}</dd>
+                                      </div>
+                                    )}
                                     {sectionFields.map((field) => (
                                       <div key={field.key}>
                                         <dt>{field.label}</dt>
