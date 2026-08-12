@@ -1,16 +1,49 @@
-# React + Vite
+# Dashboard de Despesas Públicas
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Notas de empenho: Vercel + Cloudflare R2, sem banco de dados
 
-Currently, two official plugins are available:
+As 753 mil notas não são enviadas para Git, Vercel ou PostgreSQL. O projeto mantém o CSV original intocado e cria uma cópia estática segmentada por **órgão**, **ano** e **página**. Esses arquivos ficam no Cloudflare R2; o site baixa apenas o recorte que a pessoa abriu.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### Preparar a base
 
-## React Compiler
+O arquivo de origem não é modificado:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```powershell
+npm run preparar:empenhos -- "C:\Users\rgoes\Downloads\base de dados notas de empenho poder executivo 2022 a 2026 (1).csv"
+```
 
-## Expanding the ESLint configuration
+O resultado é criado em `.dados-empenho/`, ignorado pelo Git.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Publicar no Cloudflare R2
+
+1. No Cloudflare, crie um bucket R2 chamado `notas-empenho`.
+2. Crie uma **R2 API Token** com permissão de leitura/escrita para esse bucket.
+3. No `.env` local, preencha as quatro variáveis abaixo. Nunca envie esse arquivo ao Git ou Vercel:
+
+   ```text
+   CLOUDFLARE_ACCOUNT_ID=...
+   R2_ACCESS_KEY_ID=...
+   R2_SECRET_ACCESS_KEY=...
+   R2_BUCKET_NAME=notas-empenho
+   ```
+
+4. Habilite acesso público por um domínio customizado para o bucket e copie sua URL, por exemplo `https://dados.seudominio.com`.
+5. Publique a base:
+
+   ```powershell
+   npm run publicar:empenhos
+   ```
+
+### Configurar Vercel
+
+Em **Settings → Environment Variables**, crie para Production e Preview:
+
+```text
+VITE_EMPENHOS_STORAGE_URL=https://dados.seudominio.com
+```
+
+Depois faça um **Redeploy**. Essa é a única variável que o Vercel precisa para as notas; ela é pública e não dá acesso de escrita ao R2.
+
+### Atualizar depois
+
+Rode novamente os comandos de preparar e publicar com o CSV novo. O CSV original continua preservado; somente a cópia de publicação é substituída.

@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.dados-empenho/
+notas-empenho-rejeitadas.jsonl
 
 # Editor directories and files
 .vscode/*
