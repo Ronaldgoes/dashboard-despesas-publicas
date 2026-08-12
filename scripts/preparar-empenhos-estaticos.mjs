@@ -95,6 +95,7 @@ for await (const row of csvRows()) {
       chunk: 1,
       files: [],
       records: [],
+      units: new Map(),
     }
     states.set(stateKey, state)
   }
@@ -102,6 +103,13 @@ for await (const row of csvRows()) {
   const record = empenhoFieldKeys.map((field) => String(row[field] ?? ''))
   state.records.push(record)
   if (state.records.length === recordsPerFile) await writeChunk(outputDirectory, state)
+
+  const unitCode = String(row.cdunidadegestora ?? '').trim() || 'Sem código'
+  const unitName = String(row.nmunidadegestora ?? '').trim() || 'Unidade gestora não informada'
+  const unitKey = `${unitCode}||${unitName}`
+  const unit = state.units.get(unitKey) ?? { id: folderName(unitKey), code: unitCode, name: unitName, count: 0 }
+  unit.count += 1
+  state.units.set(unitKey, unit)
 
   let organization = organizations.get(organizationKey)
   if (!organization) {
@@ -137,6 +145,8 @@ const manifest = {
           year,
           count,
           chunks: chunksByOrganizationYear.get(`${key}||${year}`) ?? [],
+          units: [...(states.get(`${key}||${year}`)?.units.values() ?? [])]
+            .sort((left, right) => `${left.code} ${left.name}`.localeCompare(`${right.code} ${right.name}`, 'pt-BR')),
         }))
         .sort((left, right) => Number(left.year) - Number(right.year)),
     }))
