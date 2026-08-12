@@ -12,6 +12,7 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import './App.css'
+import NotasEmpenhoPage from './NotasEmpenhoPage.jsx'
 
 const Plot = createPlotlyComponent(Plotly)
 
@@ -382,6 +383,7 @@ function App() {
   const [chartUnits, setChartUnits] = useState(defaultChartUnits)
   const [summaryUnit, setSummaryUnit] = useState('millions')
   const [selectedYears, setSelectedYears] = useState(YEAR_RANGE)
+  const [viewMode, setViewMode] = useState('dashboard')
 
   function setChartUnit(chartId, unit) {
     setChartUnits((current) => ({
@@ -578,7 +580,7 @@ function App() {
 
   return (
     <main className="app-shell">
-      <header className="dashboard-header">
+      {viewMode === 'dashboard' && <header className="dashboard-header">
         <div>
           <span className="eyebrow">Despesas públicas 2022-2026</span>
           <h1>Composição e evolução por órgão</h1>
@@ -619,8 +621,26 @@ function App() {
             </div>
           </fieldset>
         </div>
-      </header>
+      </header>}
 
+      <nav className="page-nav" aria-label="Páginas do painel">
+        <button
+          type="button"
+          className={viewMode === 'dashboard' ? 'active' : ''}
+          onClick={() => setViewMode('dashboard')}
+        >
+          Dashboard
+        </button>
+        <button
+          type="button"
+          className={viewMode === 'empenhos' ? 'active' : ''}
+          onClick={() => setViewMode('empenhos')}
+        >
+          Notas de empenho
+        </button>
+      </nav>
+
+      {viewMode === 'empenhos' ? <NotasEmpenhoPage /> : <>
       <section className="summary-section" aria-label="Resumo anual">
         <div className="summary-toolbar">
           <span>Resumo do periodo selecionado</span>
@@ -930,6 +950,7 @@ function App() {
           </table>
         </div>
       </section>
+      </>}
     </main>
   )
 }
