@@ -11,7 +11,9 @@
     "preparar:empenhos": "node scripts/preparar-empenhos-estaticos.mjs",
     "publicar:empenhos": "node --env-file=.env scripts/publicar-empenhos-r2.mjs",
     "verificar:empenhos": "node --env-file=.env scripts/verificar-empenhos-r2.mjs",
-    "atualizar:catalogo-empenhos": "node --env-file=.env scripts/atualizar-catalogo-empenhos-r2.mjs"
+    "atualizar:catalogo-empenhos": "node --env-file=.env scripts/atualizar-catalogo-empenhos-r2.mjs",
+    "preparar:dashboard": "node scripts/preparar-dashboard-estatico.mjs",
+    "publicar:dashboard": "node --env-file=.env scripts/publicar-empenhos-r2.mjs .dados-dashboard"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

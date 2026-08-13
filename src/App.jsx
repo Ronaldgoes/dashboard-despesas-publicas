@@ -16,7 +16,8 @@ import NotasEmpenhoPage from './NotasEmpenhoPage.jsx'
 
 const Plot = createPlotlyComponent(Plotly)
 
-const DATA_URL = '/data/DADOS_ORGAOS_2022_2026.xlsx'
+const DASHBOARD_STORAGE_URL = String(import.meta.env.VITE_EMPENHOS_STORAGE_URL ?? 'https://pub-e8acbbb11489485c8b061c0cc8e9811f.r2.dev').replace(/\/$/, '')
+const dashboardUrl = (path) => `${DASHBOARD_STORAGE_URL}/${path}`
 const YEAR_RANGE = [2022, 2023, 2024, 2025, 2026]
 
 const plotConfig = {
@@ -199,6 +200,15 @@ function normalizeRow(row) {
   }
 }
 
+function normalizeDashboardRow(values, fields) {
+  const source = Object.fromEntries(fields.map((field, index) => [field, values[index] ?? '']))
+  const value = (key) => String(source[key] ?? '').trim()
+  const numeric = (key) => Number(value(key).replaceAll('.', '').replace(',', '.')) || 0
+  return {
+    ano: Number(value('nuano')), codOrgao: value('cdorgao'), orgao: value('nmorgao'), unidadeGestora: value('nmunidadegestora'), categoria: value('nmcategoria'), grupo: value('nmgruponaturezadespesa'), elemento: value('nmelemento'), subelemento: value('nmsubelemento'), subacao: value('nmsubacao'), credor: value('nmcredor'), funcao: value('nmfuncao'), subfuncao: value('nmsubfuncao'), programa: value('nmprograma'), acao: value('nmacao'), fonteRecurso: value('nmfonterecurso'), empenhado: numeric('vlempenhado'), liquidado: numeric('vlliquidado'), pago: numeric('vlpago'), valorMilhoes: 0,
+  }
+}
+
 function groupSum(rows, keys) {
   const map = new Map()
 
@@ -373,7 +383,10 @@ function buildElementYearBars(rows, unit, years = YEAR_RANGE) {
 
 function App() {
   const [rows, setRows] = useState([])
+  const [dashboardManifest, setDashboardManifest] = useState(null)
   const [selectedOrg, setSelectedOrg] = useState('')
+  const [selectedMeasure, setSelectedMeasure] = useState('liquidado')
+  const [detailFilters, setDetailFilters] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sortConfig, setSortConfig] = useState({
@@ -403,6 +416,7 @@ function App() {
   }
 
   useEffect(() => {
+    if (true) return undefined
     async function loadWorkbook() {
       try {
         const response = await fetch(DATA_URL)
@@ -445,28 +459,41 @@ function App() {
     loadWorkbook()
   }, [])
 
-  const orgOptions = useMemo(() => {
-    const map = new Map()
-    rows.forEach((row) => {
-      map.set(`${row.codOrgao}||${row.orgao}`, {
-        value: `${row.codOrgao}||${row.orgao}`,
-        label: `${row.codOrgao} - ${row.orgao}`,
-      })
-    })
+  useEffect(() => {
+    fetch(dashboardUrl('dashboard/manifest.json'))
+      .then((response) => { if (!response.ok) throw new Error('A nova base do Dashboard ainda não foi publicada no R2.'); return response.json() })
+      .then((manifest) => { setDashboardManifest(manifest); setSelectedOrg(manifest.organizations[0]?.id ?? '') })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [])
 
-    return Array.from(map.values()).sort((a, b) =>
+  useEffect(() => {
+    if (!dashboardManifest || !selectedOrg) return undefined
+    const organization = dashboardManifest.organizations.find((item) => item.id === selectedOrg)
+    const chunks = (organization?.years ?? []).filter((entry) => selectedYears.includes(entry.year)).flatMap((entry) => entry.chunks ?? [])
+    const controller = new AbortController(); setLoading(true)
+    Promise.all(chunks.map(async (chunk) => { const response = await fetch(dashboardUrl(chunk.path), { signal: controller.signal }); if (!response.ok) throw new Error('Não foi possível carregar a base do Dashboard.'); return response.json() }))
+      .then((parts) => { setRows(parts.flat().map((record) => normalizeDashboardRow(record, dashboardManifest.fields))); setError('') })
+      .catch((err) => { if (err.name !== 'AbortError') setError(err.message) })
+      .finally(() => setLoading(false))
+    return () => controller.abort()
+  }, [dashboardManifest, selectedOrg, selectedYears])
+
+  const orgOptions = useMemo(() => {
+    return (dashboardManifest?.organizations ?? []).map((organization) => ({ value: organization.id, label: `${organization.code} - ${organization.name}` })).sort((a, b) =>
       a.label.localeCompare(b.label, 'pt-BR'),
     )
-  }, [rows])
+  }, [dashboardManifest])
+
+  const filterFields = [['unidadeGestora', 'Unidade gestora'], ['categoria', 'Categoria econômica'], ['grupo', 'Grupo natureza despesa'], ['elemento', 'Elemento'], ['subelemento', 'Subelemento'], ['subacao', 'Subação'], ['credor', 'Credor'], ['funcao', 'Função'], ['subfuncao', 'Subfunção'], ['programa', 'Programa'], ['acao', 'Ação'], ['fonteRecurso', 'Fonte recurso']]
+  const detailOptions = useMemo(() => Object.fromEntries(filterFields.map(([key]) => [key, [...new Set(rows.map((row) => row[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'))])), [rows])
 
   const filteredRows = useMemo(
     () =>
       rows.filter(
-        (row) =>
-          `${row.codOrgao}||${row.orgao}` === selectedOrg &&
-          selectedYears.includes(row.ano),
-      ),
-    [rows, selectedOrg, selectedYears],
+        (row) => Object.entries(detailFilters).every(([key, value]) => !value || row[key] === value),
+      ).map((row) => ({ ...row, valorMilhoes: row[selectedMeasure] / 1_000_000 })),
+    [rows, detailFilters, selectedMeasure],
   )
 
   const selectedLabel =
@@ -596,7 +623,7 @@ function App() {
             <select
               id="orgao"
               value={selectedOrg}
-              onChange={(event) => setSelectedOrg(event.target.value)}
+              onChange={(event) => { setSelectedOrg(event.target.value); setDetailFilters({}) }}
             >
               {orgOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -605,6 +632,12 @@ function App() {
               ))}
             </select>
           </div>
+          <label className="dashboard-measure" htmlFor="medida-dashboard">Valor analisado</label>
+          <select id="medida-dashboard" className="dashboard-measure-select" value={selectedMeasure} onChange={(event) => setSelectedMeasure(event.target.value)}>
+            <option value="empenhado">Valor empenhado</option>
+            <option value="liquidado">Valor liquidado</option>
+            <option value="pago">Valor pago</option>
+          </select>
           <fieldset className="year-filter" aria-label="Filtro principal por periodo">
             <legend>Periodo</legend>
             <div className="year-options">
@@ -620,6 +653,10 @@ function App() {
               ))}
             </div>
           </fieldset>
+          <details className="dashboard-detail-filters" open>
+            <summary>Filtros detalhados ({Object.values(detailFilters).filter(Boolean).length} ativo(s))</summary>
+            <div>{filterFields.map(([key, label]) => <label key={key}>{label}<select value={detailFilters[key] ?? ''} onChange={(event) => setDetailFilters((current) => ({ ...current, [key]: event.target.value }))}><option value="">Todos</option>{detailOptions[key].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>
+          </details>
         </div>
       </header>}
 
@@ -649,7 +686,7 @@ function App() {
         <div className="summary-strip">
           <article className="kpi-card total-card">
             <div>
-              <span>Total liquidado</span>
+              <span>{selectedMeasure === 'empenhado' ? 'Total empenhado' : selectedMeasure === 'pago' ? 'Total pago' : 'Total liquidado'}</span>
               <strong>{formatByUnit(totalPeriod, summaryUnit)}</strong>
             </div>
             <TrendingUp size={28} />

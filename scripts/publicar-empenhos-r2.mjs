@@ -12,7 +12,7 @@ const bucket = process.env.R2_BUCKET_NAME
 if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
   throw new Error('Defina CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY e R2_BUCKET_NAME no .env.')
 }
-if (!existsSync(resolve(dataDirectory, 'manifest.json'))) {
+if (!existsSync(resolve(dataDirectory, 'manifest.json')) && !existsSync(resolve(dataDirectory, 'dashboard/manifest.json'))) {
   throw new Error('A base preparada não foi encontrada. Rode preparar:empenhos antes de publicar.')
 }
 
@@ -33,7 +33,7 @@ const client = new S3Client({
   credentials: { accessKeyId, secretAccessKey },
 })
 const files = await listFiles(dataDirectory)
-const manifestPath = resolve(dataDirectory, 'manifest.json')
+const manifestPath = existsSync(resolve(dataDirectory, 'manifest.json')) ? resolve(dataDirectory, 'manifest.json') : resolve(dataDirectory, 'dashboard/manifest.json')
 const releaseFiles = files.filter((file) => file !== manifestPath)
 
 async function upload(file, position, total) {
