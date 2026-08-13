@@ -204,8 +204,10 @@ function normalizeDashboardRow(values, fields) {
   const source = Object.fromEntries(fields.map((field, index) => [field, values[index] ?? '']))
   const value = (key) => String(source[key] ?? '').trim()
   const numeric = (key) => Number(value(key).replaceAll('.', '').replace(',', '.')) || 0
+  const labeled = (code, name) => [value(code), value(name)].filter(Boolean).join(' — ')
   return {
-    ano: Number(value('nuano')), codOrgao: value('cdorgao'), orgao: value('nmorgao'), unidadeGestora: value('nmunidadegestora'), categoria: value('nmcategoria'), grupo: value('nmgruponaturezadespesa'), elemento: value('nmelemento'), subelemento: value('nmsubelemento'), subacao: value('nmsubacao'), credor: value('nmcredor'), funcao: value('nmfuncao'), subfuncao: value('nmsubfuncao'), programa: value('nmprograma'), acao: value('nmacao'), fonteRecurso: value('nmfonterecurso'), empenhado: numeric('vlempenhado'), liquidado: numeric('vlliquidado'), pago: numeric('vlpago'), valorMilhoes: 0,
+    ano: Number(value('nuano')), codOrgao: value('cdorgao'), orgao: value('nmorgao'),
+    unidadeGestora: labeled('cdunidadegestora', 'nmunidadegestora'), categoria: labeled('cdcategoria', 'nmcategoria'), grupo: labeled('cdgruponaturezadespesa', 'nmgruponaturezadespesa'), elemento: labeled('cdelemento', 'nmelemento'), subelemento: labeled('cdsubelemento', 'nmsubelemento'), subacao: labeled('cdsubacao', 'nmsubacao'), credor: labeled('cdcredor', 'nmcredor'), funcao: labeled('cdfuncao', 'nmfuncao'), subfuncao: labeled('cdsubfuncao', 'nmsubfuncao'), programa: labeled('cdprograma', 'nmprograma'), acao: labeled('cdacao', 'nmacao'), fonteRecurso: labeled('cdfonterecurso', 'nmfonterecurso'), empenhado: numeric('vlempenhado'), liquidado: numeric('vlliquidado'), pago: numeric('vlpago'), valorMilhoes: 0,
   }
 }
 
@@ -491,7 +493,7 @@ function App() {
   const filteredRows = useMemo(
     () =>
       rows.filter(
-        (row) => Object.entries(detailFilters).every(([key, value]) => !value || row[key] === value),
+        (row) => Object.entries(detailFilters).every(([key, value]) => !value || String(row[key] ?? '').toLocaleLowerCase('pt-BR').includes(value.toLocaleLowerCase('pt-BR'))),
       ).map((row) => ({ ...row, valorMilhoes: row[selectedMeasure] / 1_000_000 })),
     [rows, detailFilters, selectedMeasure],
   )
@@ -655,7 +657,7 @@ function App() {
           </fieldset>
           <details className="dashboard-detail-filters" open>
             <summary>Filtros detalhados ({Object.values(detailFilters).filter(Boolean).length} ativo(s))</summary>
-            <div>{filterFields.map(([key, label]) => <label key={key}>{label}<select value={detailFilters[key] ?? ''} onChange={(event) => setDetailFilters((current) => ({ ...current, [key]: event.target.value }))}><option value="">Todos</option>{detailOptions[key].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>
+            <div>{filterFields.map(([key, label]) => <label key={key}>{label}<input type="search" list={`filtro-${key}`} value={detailFilters[key] ?? ''} onChange={(event) => setDetailFilters((current) => ({ ...current, [key]: event.target.value }))} placeholder="Todos — digite para filtrar" /><datalist id={`filtro-${key}`}>{detailOptions[key].map((value) => <option key={value} value={value} />)}</datalist></label>)}</div>
           </details>
         </div>
       </header>}
