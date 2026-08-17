@@ -47,7 +47,7 @@ async function upload(file, position, total) {
         Key: key,
         Body: await readFile(file),
         ContentType: 'application/json; charset=utf-8',
-        CacheControl: key === 'manifest.json' ? 'public, max-age=60' : 'public, max-age=31536000, immutable',
+        CacheControl: key === 'manifest.json' || key.endsWith('/manifest.json') ? 'public, max-age=60' : 'public, max-age=31536000, immutable',
       }))
       lastError = null
       break

@@ -14,6 +14,8 @@ dist-ssr
 .env
 .dados-empenho/
 .dados-dashboard/
+.dados-dashboard-global/
+.dados-dashboard-options/
 notas-empenho-rejeitadas.jsonl
 
 # Editor directories and files

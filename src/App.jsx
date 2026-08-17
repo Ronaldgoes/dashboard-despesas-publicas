@@ -16,7 +16,7 @@ import NotasEmpenhoPage from './NotasEmpenhoPage.jsx'
 
 const Plot = createPlotlyComponent(Plotly)
 
-const DASHBOARD_STORAGE_URL = String(import.meta.env.VITE_EMPENHOS_STORAGE_URL ?? 'https://pub-e8acbbb11489485c8b061c0cc8e9811f.r2.dev').replace(/\/$/, '')
+const DASHBOARD_STORAGE_URL = import.meta.env.DEV ? '/dashboard-r2' : String(import.meta.env.VITE_EMPENHOS_STORAGE_URL ?? 'https://pub-e8acbbb11489485c8b061c0cc8e9811f.r2.dev').replace(/\/$/, '')
 const dashboardUrl = (path) => `${DASHBOARD_STORAGE_URL}/${path}`
 const YEAR_RANGE = [2022, 2023, 2024, 2025, 2026]
 
@@ -199,6 +199,14 @@ function normalizeRow(row) {
     valorMilhoes: Number(valorLiquidado ?? 0) / 1_000_000,
   }
 }
+let chartContext = ''
+
+function MultiFilter({ label, values, selected, onChange }) {
+  const [visible, setVisible] = useState(100)
+  const choices = [...new Set([...selected, ...values.slice(0, visible)])]
+  const toggle = (value) => onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value])
+  return <details className="multi-filter"><summary>{label}<span>{selected.length ? `${selected.length} selecionado(s)` : 'Todos'}</span></summary>{selected.length > 0 && <button type="button" className="clear-multi" onClick={() => onChange([])}>Limpar seleção</button>}<div className="multi-options">{choices.map((value) => <label key={value}><input type="checkbox" checked={selected.includes(value)} onChange={() => toggle(value)} />{value}</label>)}{values.length > visible && <button type="button" className="show-more-multi" onClick={() => setVisible((current) => current + 100)}>Mostrar mais opções</button>}</div></details>
+}
 
 function normalizeDashboardRow(values, fields) {
   const source = Object.fromEntries(fields.map((field, index) => [field, values[index] ?? '']))
@@ -231,7 +239,7 @@ function groupSum(rows, keys) {
 function getChartLayout(title, extra = {}) {
   return {
     title: {
-      text: title,
+      text: chartContext ? `${title}<br><sup>${chartContext}</sup>` : title,
       font: { size: 17, color: '#172033' },
       x: 0,
       xanchor: 'left',
@@ -409,6 +417,9 @@ function App() {
 
   function toggleYear(year) {
     setSelectedYears((current) => {
+      // A leitura de todos os órgãos é propositalmente limitada a um ano por vez.
+      // Isso evita transferir a base inteira para o navegador em uma única consulta.
+      if (selectedOrg === '__todos__') { setDetailFilters({}); return [year] }
       if (current.includes(year)) {
         return current.length === 1 ? current : current.filter((item) => item !== year)
       }
@@ -462,7 +473,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    fetch(dashboardUrl('dashboard/manifest.json'))
+    fetch(dashboardUrl('dashboard/manifest.json?catalogVersion=5'), { cache: 'no-store' })
       .then((response) => { if (!response.ok) throw new Error('A nova base do Dashboard ainda não foi publicada no R2.'); return response.json() })
       .then((manifest) => { setDashboardManifest(manifest); setSelectedOrg(manifest.organizations[0]?.id ?? '') })
       .catch((err) => setError(err.message))
@@ -471,35 +482,82 @@ function App() {
 
   useEffect(() => {
     if (!dashboardManifest || !selectedOrg) return undefined
-    const organization = dashboardManifest.organizations.find((item) => item.id === selectedOrg)
-    const chunks = (organization?.years ?? []).filter((entry) => selectedYears.includes(entry.year)).flatMap((entry) => entry.chunks ?? [])
+    let chunks = []
+    if (selectedOrg === '__todos__') {
+      const hasDetailedFilter = Object.values(detailFilters).some((values) => values?.length)
+      if (!hasDetailedFilter) {
+        setRows([]); setError(''); setLoading(false)
+        return undefined
+      }
+      const globalYear = dashboardManifest.globalYears?.find((entry) => entry.year === selectedYears[0])
+      chunks = globalYear ? [globalYear] : []
+    } else {
+      chunks = dashboardManifest.organizations
+        .filter((item) => item.id === selectedOrg)
+        .flatMap((organization) => organization.years ?? [])
+        .filter((entry) => selectedYears.includes(entry.year))
+        .flatMap((entry) => entry.chunks ?? [])
+    }
     const controller = new AbortController(); setLoading(true)
-    Promise.all(chunks.map(async (chunk) => { const response = await fetch(dashboardUrl(chunk.path), { signal: controller.signal }); if (!response.ok) throw new Error('Não foi possível carregar a base do Dashboard.'); return response.json() }))
-      .then((parts) => { setRows(parts.flat().map((record) => normalizeDashboardRow(record, dashboardManifest.fields))); setError('') })
-      .catch((err) => { if (err.name !== 'AbortError') setError(err.message) })
-      .finally(() => setLoading(false))
+    async function loadChunks() {
+      try {
+        // R2 e o navegador ficam estáveis com poucas requisições simultâneas.
+        const parts = []
+        const batchSize = 6
+        for (let index = 0; index < chunks.length; index += batchSize) {
+          const batch = chunks.slice(index, index + batchSize)
+          const records = await Promise.all(batch.map(async (chunk) => {
+            const response = await fetch(dashboardUrl(chunk.path), { signal: controller.signal })
+            if (!response.ok) throw new Error('Não foi possível carregar a base do Dashboard.')
+            return response.json()
+          }))
+          parts.push(...records)
+        }
+        setRows(parts.flat().map((record) => normalizeDashboardRow(record, dashboardManifest.fields)))
+        setError('')
+      } catch (err) {
+        if (err.name !== 'AbortError') setError(err.message)
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+    loadChunks()
     return () => controller.abort()
-  }, [dashboardManifest, selectedOrg, selectedYears])
+  }, [dashboardManifest, selectedOrg, selectedYears, detailFilters])
 
   const orgOptions = useMemo(() => {
-    return (dashboardManifest?.organizations ?? []).map((organization) => ({ value: organization.id, label: `${organization.code} - ${organization.name}` })).sort((a, b) =>
-      a.label.localeCompare(b.label, 'pt-BR'),
-    )
+    const organizations = (dashboardManifest?.organizations ?? [])
+      .map((organization) => ({ value: organization.id, label: `${organization.code} - ${organization.name}` }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+    return [{ value: '__todos__', label: 'Todos os órgãos' }, ...organizations]
   }, [dashboardManifest])
 
-  const filterFields = [['unidadeGestora', 'Unidade gestora'], ['categoria', 'Categoria econômica'], ['grupo', 'Grupo natureza despesa'], ['elemento', 'Elemento'], ['subelemento', 'Subelemento'], ['subacao', 'Subação'], ['credor', 'Credor'], ['funcao', 'Função'], ['subfuncao', 'Subfunção'], ['programa', 'Programa'], ['acao', 'Ação'], ['fonteRecurso', 'Fonte recurso']]
-  const detailOptions = useMemo(() => Object.fromEntries(filterFields.map(([key]) => [key, [...new Set(rows.map((row) => row[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'))])), [rows])
+  const filterFields = [['unidadeGestora', 'Unidade gestora'], ['categoria', 'Categoria econômica'], ['grupo', 'Grup. Nat.'], ['elemento', 'Elemento'], ['subelemento', 'Subelemento'], ['funcao', 'Função'], ['subfuncao', 'Subfunção'], ['programa', 'Programa'], ['acao', 'Ação'], ['subacao', 'Subação'], ['credor', 'Credor'], ['fonteRecurso', 'Fonte de recurso']]
+  const detailOptions = useMemo(() => {
+    const options = Object.fromEntries(filterFields.map(([key]) => [key, [...new Set(rows.map((row) => row[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'))]))
+    if (selectedOrg === '__todos__') {
+      const globalOptions = dashboardManifest?.globalOptions?.find((entry) => entry.year === selectedYears[0])?.options ?? {}
+      for (const [key] of filterFields) options[key] = globalOptions[key] ?? options[key]
+      options.unidadeGestora = (dashboardManifest?.globalUnits?.find((entry) => entry.year === selectedYears[0])?.units ?? [])
+        .map((entry) => `${entry.code} — ${entry.name}`)
+      options.elemento = (dashboardManifest?.globalElements?.find((entry) => entry.year === selectedYears[0])?.elements ?? [])
+        .map((entry) => `${entry.code} — ${entry.name}`)
+    }
+    return options
+  }, [rows, selectedOrg, dashboardManifest, selectedYears])
 
   const filteredRows = useMemo(
     () =>
       rows.filter(
-        (row) => Object.entries(detailFilters).every(([key, value]) => !value || String(row[key] ?? '').toLocaleLowerCase('pt-BR').includes(value.toLocaleLowerCase('pt-BR'))),
+        (row) => Object.entries(detailFilters).every(([key, values]) => !values?.length || values.includes(row[key])),
       ).map((row) => ({ ...row, valorMilhoes: row[selectedMeasure] / 1_000_000 })),
     [rows, detailFilters, selectedMeasure],
   )
 
   const selectedLabel =
-    orgOptions.find((option) => option.value === selectedOrg)?.label ?? ''
+    orgOptions.find((option) => option.value === selectedOrg)?.label ?? 'Todos os órgãos'
+  const generalModeNeedsScope = selectedOrg === '__todos__' && !Object.values(detailFilters).some((values) => values?.length)
+  chartContext = `${selectedLabel} · ${selectedMeasure === 'empenhado' ? 'Empenhado' : selectedMeasure === 'pago' ? 'Pago' : 'Liquidado'} · ${selectedYears.join(', ')}${Object.values(detailFilters).some((values) => values?.length) ? ' · filtros detalhados aplicados' : ''}`
 
   const annualTotals = useMemo(() => {
     const totals = Object.fromEntries(YEAR_RANGE.map((year) => [year, 0]))
@@ -625,7 +683,12 @@ function App() {
             <select
               id="orgao"
               value={selectedOrg}
-              onChange={(event) => { setSelectedOrg(event.target.value); setDetailFilters({}) }}
+              onChange={(event) => {
+                const nextOrg = event.target.value
+                setSelectedOrg(nextOrg)
+                setDetailFilters({})
+                if (nextOrg === '__todos__') setSelectedYears([YEAR_RANGE[YEAR_RANGE.length - 1]])
+              }}
             >
               {orgOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -655,9 +718,10 @@ function App() {
               ))}
             </div>
           </fieldset>
+          {selectedOrg === '__todos__' && <p className="all-org-note">Para analisar todos os órgãos, marque qualquer filtro detalhado abaixo. A consulta usa um ano por vez para permanecer rápida.</p>}
           <details className="dashboard-detail-filters" open>
-            <summary>Filtros detalhados ({Object.values(detailFilters).filter(Boolean).length} ativo(s))</summary>
-            <div>{filterFields.map(([key, label]) => <label key={key}>{label}<input type="search" list={`filtro-${key}`} value={detailFilters[key] ?? ''} onChange={(event) => setDetailFilters((current) => ({ ...current, [key]: event.target.value }))} placeholder="Todos — digite para filtrar" /><datalist id={`filtro-${key}`}>{detailOptions[key].map((value) => <option key={value} value={value} />)}</datalist></label>)}</div>
+            <summary>Filtros detalhados ({Object.values(detailFilters).reduce((total, values) => total + values.length, 0)} selecionado(s))</summary>
+            <div>{filterFields.map(([key, label]) => <MultiFilter key={key} label={label} values={detailOptions[key]} selected={detailFilters[key] ?? []} onChange={(values) => setDetailFilters((current) => ({ ...current, [key]: values }))} />)}</div>
           </details>
         </div>
       </header>}
